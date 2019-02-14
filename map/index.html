@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title>valentine</title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+
+    <script src="src/jquery.min.js"></script>
+    <script src="src/images-grid.js"></script>
+    <script src='src/mapbox-gl.js'></script>
+    <!--<script src='src/mapbox-gl-language.js'></script>-->
+    <link href="src/images-grid.css" rel="stylesheet" />
+    <link href='src/mapbox-gl.css' rel='stylesheet' />
+    <style>
+        body { margin:0; padding:0; }
+        #map { position:fixed; top:0; bottom:0; width:85%; }
+        .marker{
+            background-size: cover;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        #features {
+            width: 15%;
+            margin-left: 85%;
+            font-family: sans-serif;
+            overflow-y: scroll;
+            background-color: #fafafa;
+        }
+        section {
+            padding:  20px 40px;
+            line-height: 25px;
+            border-bottom: 1px solid #ddd;
+            opacity: 0.25;
+            font-size: 13px;
+        }
+        section.active {
+            opacity: 1;
+        }
+        section:last-child {
+            border-bottom: none;
+            margin-bottom: 200px;
+        }
+    </style>
+</head>
+<body>
+
+<div id='map'></div>
+<div id='features'></div>
+
+<script src='./data.js'></script>
+<script>
+
+function randomString(len) {
+    len = len || 32;
+    var $chars = 'ABCDEFGHJKMNPQRSTWXYZabcdefhijkmnprstwxyz2345678';    /****默认去掉了容易混淆的字符oOLl,9gq,Vv,Uu,I1****/
+    var maxPos = $chars.length;
+    var pwd = '';
+    for (i = 0; i < len; i++) {
+        pwd += $chars.charAt(Math.floor(Math.random() * maxPos));
+    }
+    return pwd;
+}
+
+function randomNumber(max_num){
+    return Math.floor(Math.random() * max_num)
+}
+
+mapboxgl.accessToken = 'pk.eyJ1IjoibGl1emh1b2xpbmcyMDExIiwiYSI6ImNqZmd3ZDl1bDJ0azEzMm9memR3aGZoazkifQ.3iSmWYbdneSfrfLn4J397Q';
+
+var geojson = {
+    "type": "FeatureCollection",
+    "features": []
+};
+
+const PIC_FOLDER = './imgs/';
+const THUMB_PIC_FOLDER = './thumb_imgs/';
+get_data().forEach(function (city_data) {
+    var geo_city = {};
+    geo_city.type = "Feature";
+    var imgs = [];
+    city_data.imgs.forEach(function (img) {
+        imgs.push({
+            "src": PIC_FOLDER + city_data.city + '/' + img.src,
+            "caption": img.caption,
+            "thumbnail": THUMB_PIC_FOLDER + city_data.city + '/' + img.src
+        })
+    });
+    geo_city.properties = {
+        "marker_img": THUMB_PIC_FOLDER + city_data.city + '/' + city_data.marker_img,
+        "imgs": imgs,
+        "title": city_data.title,
+        "content": city_data.content,
+        "position": city_data.position,
+        "iconSize": [50, 50]
+    };
+    geo_city.geometry = {
+        "type": "Point",
+        "coordinates": city_data.position
+    };
+
+    geojson.features.push(geo_city);
+});
+
+//zoom: 2.4 center: [163.814, 3.990]
+var map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/mapbox/light-v9',
+    center: [139.787379, 35.6792],
+    zoom: 4.3
+});
+
+// var language = new MapboxLanguage();
+// map.addControl(language);
+
+var city_data = {};
+var marker_data_map = {};
+var first_city_id = '';
+
+// add markers to map
+geojson.features.forEach(function(position) {
+    // create a DOM element for the marker
+    var el = document.createElement('div');
+    el.className = 'marker';
+    el.style.backgroundImage = "url('" + position.properties.marker_img + "')";
+    el.style.width = position.properties.iconSize[0] + 'px';
+    el.style.height = position.properties.iconSize[1] + 'px';
+
+    var random_id = randomString();
+    var section = "<section onclick='setActiveCity(this.id)' id='" + random_id + "'";
+    if (first_city_id === ''){
+        first_city_id = random_id;
+        section += " class='active'"
+    }
+    section += "><h3>" + position.properties.title + "</h3><p>";
+    section += position.properties.content + "</p></section>";
+    
+    $('#features').append(section);
+
+    city_data[random_id] = {
+        'center': position.properties.position,
+        'zoom': 5,
+        'curve': randomNumber(2) + 1,
+        'bearing': randomNumber(8) + 1,
+        'pitch': randomNumber(8) + 1,
+        'duration': 2000,
+        'speed': 0.8
+    };
+
+    var popup_img = document.createElement('div');
+    popup_img.id = random_id + '_image';
+    var popup = new mapboxgl.Popup({
+        closeButton: false,
+        anchor: 'bottom'
+    }).setDOMContent(popup_img);
+
+    var marker = new mapboxgl.Marker(el)
+        .setLngLat(position.geometry.coordinates)
+        .setPopup(popup)
+        .addTo(map);
+
+    marker_data_map[random_id] = {
+        'marker': marker,
+        'images': position.properties.imgs
+    };
+
+    el.addEventListener('mouseenter', function() {
+        if(!marker.getPopup().isOpen()){
+            marker.togglePopup();
+
+            $('#' + random_id + '_image').imagesGrid({
+                images: position.properties.imgs,
+                align: true
+            });
+
+            move_to_city(random_id);
+        }
+    });
+    // el.addEventListener('mouseout', function() {
+    //     marker.togglePopup();
+    // });
+});
+
+
+function move_to_city(city_id) {
+    city_pos = document.getElementById(city_id);
+    window.scrollTo(0, city_pos.offsetTop);
+    setActiveCity(city_id);
+}
+
+
+var active_city_id = first_city_id;
+function setActiveCity(city_id) {
+    if (city_id === active_city_id) return;
+
+    map.flyTo(city_data[city_id]);
+    console.log(city_data[city_id]);
+
+    document.getElementById(city_id).setAttribute('class', 'active');
+    document.getElementById(active_city_id).setAttribute('class', '');
+
+    var marker = marker_data_map[city_id]['marker'];
+    if(!marker.getPopup().isOpen()){
+        marker.togglePopup();
+
+        $('#' + city_id + '_image').imagesGrid({
+            images: marker_data_map[city_id]['images'],
+            align: true
+        });
+    }
+
+    active_city_id = city_id;
+}
+
+
+
+</script>
+</body>
+</html>
